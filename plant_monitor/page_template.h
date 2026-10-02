@@ -86,7 +86,7 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
   <div class="panel">
     <div class="head"><h2>Build your own</h2></div>
     <ol class="hint">
-      <li>Get the full source, wiring table and setup guide on <a href="https://github.com/eltech-online/eltech-esp32-plant-monitor" target="_blank">GitHub</a></li>
+      <li>Get the full source, wiring diagram and setup guide on <a href="https://github.com/eltech-online/eltech-esp32-plant-monitor" target="_blank">GitHub</a></li>
       <li>Flash it onto an ESP32 with the Arduino IDE (board package + 3 libraries, all listed in the README)</li>
       <li>Power it on, connect to the WiFi network it creates, and you'll see this exact page</li>
     </ol>

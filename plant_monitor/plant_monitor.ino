@@ -28,7 +28,7 @@
 //   4. The page updates every 2 seconds on its own — no need to refresh.
 //   5. Calibrate the soil sensor once, from the page: "Set dry" with the sensor
 //      in the air, "Set wet" with it standing in a glass of water.
-// Full source, wiring table and setup guide: github.com/eltech-online/eltech-esp32-plant-monitor
+// Full source, wiring diagram and setup guide: github.com/eltech-online/eltech-esp32-plant-monitor
 //
 // ---------------------------------------------------------------------------
 // New to Arduino code? How to read this file

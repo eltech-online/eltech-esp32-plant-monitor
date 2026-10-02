@@ -72,7 +72,7 @@ There are **two sketches** in this repo:
 |---|---|
 | ESP32-C3 SuperMini (or any ESP32-C3 dev board) | |
 | Capacitive soil moisture sensor (v2.0 type, 3 pins: GND / VCC / AOUT) | Analog output. The signal pin is printed `AUOT` on some boards. |
-| DHT11 module (3 pins: GND / DAT / VCC) | A module with the pull-up resistor already on the board |
+| DHT11 module (3 pins: GND / DATA / VCC) | A module with the pull-up resistor already on the board |
 | 1.3" OLED, SH1106 driver, 128×64, I2C | Address `0x3C` (try `0x3D` if blank) |
 | Breadboard + jumper wires | 10 wires: 4 for the OLED, 3 for the DHT11, 3 for the soil sensor |
 
@@ -84,8 +84,10 @@ There are **two sketches** in this repo:
 | GND | GND | GND | GND | GND |
 | I2C data | GPIO 8 | SDA | | |
 | I2C clock | GPIO 9 | SCK | | |
-| DHT11 data | GPIO 10 | | DAT | |
+| DHT11 data | GPIO 10 | | DATA | |
 | Soil signal | GPIO 3 | | | AOUT |
+
+![Wiring diagram: ESP32-C3 SuperMini to the DHT11 sensor, OLED SH1106 display and capacitive soil moisture sensor](wiring_diagram.png)
 
 All three parts share the same 3V3 and GND: use the breadboard's power rails. **Always follow the labels printed on your own modules** — the pin order differs between manufacturers.
 
@@ -213,6 +215,6 @@ Or just delete the `drawBitmap(...)` line in `setup()` and keep the text-only sp
 
 ## License
 
-The code and documentation are MIT-licensed — see [LICENSE](LICENSE). Use them, modify them, build your own kit with them.
+The code, documentation and wiring diagram are MIT-licensed — see [LICENSE](LICENSE). Use them, modify them, build your own kit with them.
 
 **The ElTech-Online name and logo are not covered by the MIT license.** The logo files (`logo.png` and the bitmap in `logo_bitmap.h`) are © ElTech-Online, all rights reserved. If you build or sell your own version, swap in your own logo and don't present it as an ElTech-Online product.
