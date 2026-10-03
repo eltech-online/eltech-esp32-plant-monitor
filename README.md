@@ -4,6 +4,8 @@
 
 A beginner-friendly **learning kit**: build a plant monitor from an **ESP32-C3 SuperMini**, a **capacitive soil moisture sensor**, a **DHT11** temperature/humidity sensor and a **1.3" OLED SH1106** display. It shows how wet the soil is as a percentage, tells you when the plant needs water, and hosts its own WiFi dashboard. No prior electronics or coding experience needed.
 
+Designed, coded and documented by ElTech-Online in Callander, Scotland — the kit design, firmware, WiFi dashboard and this guide are our own work.
+
 ![ElTech-Online logo](logo.png)
 
 ## What you'll learn
