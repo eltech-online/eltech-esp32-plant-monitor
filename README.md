@@ -42,6 +42,8 @@ Two things to know:
 - **It measures relative wetness, not a scientific water content.** 0 % means "as dry as when you calibrated in air" and 100 % means "as wet as standing in water". Different soils read a little differently, which is why you calibrate.
 - **Only the flat end goes in the soil.** The components and connector at the cable end must stay dry. The edges of the board are not sealed, so don't leave the sensor standing in water.
 
+> **Tip for long-term use:** if the sensor is going to live in a plant pot for weeks, seal it first. Brush a thin coat of clear varnish (clear nail varnish works well) along the cut edges of the board and over the flat end, and let it dry fully. This stops moisture creeping into the board, which otherwise makes the readings drift over time. Keep the varnish off the connector, and calibrate the sensor after it has dried, not before.
+
 ## What it does
 
 - Reads soil moisture (analog), air temperature and humidity (DHT11)
