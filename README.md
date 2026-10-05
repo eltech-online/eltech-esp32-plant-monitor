@@ -1,5 +1,7 @@
 # ElTech-Online ESP32-C3 Plant Monitor
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/eltech)
+
 > **Status: prototype.** The code compiles for the ESP32-C3 but has not yet been confirmed on real hardware. Pin choices, the default calibration values and the self-test ranges may still change.
 
 A beginner-friendly **learning kit**: build a plant monitor from an **ESP32-C3 SuperMini**, a **capacitive soil moisture sensor**, a **DHT11** temperature/humidity sensor and a **1.3" OLED SH1106** display. It shows how wet the soil is as a percentage, tells you when the plant needs water, and hosts its own WiFi dashboard. No prior electronics or coding experience needed.
