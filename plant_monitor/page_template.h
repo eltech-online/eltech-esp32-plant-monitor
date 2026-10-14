@@ -61,6 +61,7 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
       <div class="state"><span class="badge" id="st">--</span></div></div>
     <div class="card"><div class="label">Air temperature</div><div class="value" id="t">--</div></div>
     <div class="card"><div class="label">Air humidity</div><div class="value" id="h">--</div></div>
+    <div class="card"><div class="label">Light</div><div class="value" id="l">--</div></div>
   </div>
   <div class="panel">
     <div class="head"><h2>Soil sensor calibration</h2><span class="badge" id="calstate">--</span></div>
@@ -78,6 +79,22 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
       <button class="quiet" onclick="calibrate('reset')">Reset</button>
     </div>
     <div id="calmsg"></div>
+  </div>
+  <div class="panel">
+    <div class="head"><h2>Light correction</h2><span id="lk">--</span></div>
+    <ol class="hint">
+      <li>The white dome blocks some light, so the reading is multiplied by this
+          number. 1.5 matches the bare sensor (it read 180 lux where the dome read 120).</li>
+      <li>To set your own: note the reading, take the dome off, note it again, and
+          enter bare &divide; dome.</li>
+    </ol>
+    <div class="buttons">
+      <input id="lkin" type="number" step="0.05" min="0.5" max="5" value="1.5"
+             style="font:inherit;width:80px;padding:6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0">
+      <button onclick="setLight(el('lkin').value)">Save</button>
+      <button class="quiet" onclick="setLight('reset')">Reset to 1.5</button>
+    </div>
+    <div id="lkmsg"></div>
   </div>
   <div class="panel">
     <div class="head"><h2>Self-test (at power-on)</h2><span class="badge" id="result">--</span></div>
@@ -101,6 +118,7 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
         el('s').textContent = d.soil;
         el('t').textContent = d.temp;
         el('h').textContent = d.hum;
+        el('l').textContent = d.light;
         // DRY and WET are amber (the plant needs attention), OK is green.
         el('st').textContent = d.status;
         el('st').className = 'badge ' + (d.status === 'OK' ? 'ok' : 'warn');
@@ -111,8 +129,23 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
         if (!d.cal.valid)      { cal.textContent = 'NEEDED';   cal.className = 'badge fail'; }
         else if (d.cal.saved)  { cal.textContent = 'SAVED';    cal.className = 'badge ok'; }
         else                   { cal.textContent = 'DEFAULTS'; cal.className = 'badge warn'; }
+        if (d.lightk !== undefined) {
+          el('lk').textContent = 'x' + d.lightk.toFixed(2);
+          if (!lkLoaded) { el('lkin').value = d.lightk.toFixed(2); lkLoaded = true; }  // don't overwrite while typing
+        }
         if (d.selftest) showSelfTest(d.selftest);
       } catch (e) { /* device rebooting or momentarily busy — try again next tick */ }
+    }
+    // Saves the light correction factor on the board (or "reset" = 1.5).
+    let lkLoaded = false;
+    async function setLight(f) {
+      try {
+        const r = await fetch('/lightfactor?f=' + encodeURIComponent(f), { method: 'POST' });
+        const d = await r.json();
+        el('lkmsg').textContent = d.msg;
+        lkLoaded = false;   // show the saved value in the box again
+      } catch (e) { el('lkmsg').textContent = 'Could not reach the board. Try again.'; }
+      refresh();
     }
     // Asks the board to save its current reading as the dry or wet point.
     async function calibrate(point) {

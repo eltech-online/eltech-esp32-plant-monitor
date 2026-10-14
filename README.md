@@ -2,9 +2,9 @@
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/eltech)
 
-> **Status: BETA, not fully tested.** The firmware has passed a first run on real hardware (all parts found, self-test PASS), but the default calibration values and self-test ranges have not been tuned yet and the kit has not been through full testing. Pin choices and defaults may still change.
+> **Status: BETA, not fully tested.** An earlier version without the light sensor passed a first run on real hardware (all parts found, self-test PASS). The BH1750 light sensor code added since then has passed its self-test on real hardware, but its readings have only been spot-checked. Also, the default calibration values and self-test ranges have not been tuned yet and the kit has not been through full testing. Pin choices and defaults may still change.
 
-A beginner-friendly **learning kit**: build a plant monitor from an **ESP32-C3 SuperMini**, a **capacitive soil moisture sensor**, a **DHT11** temperature/humidity sensor and a **1.3" OLED SH1106** display. It shows how wet the soil is as a percentage, tells you when the plant needs water, and hosts its own WiFi dashboard. No prior electronics or coding experience needed.
+A beginner-friendly **learning kit**: build a plant monitor from an **ESP32-C3 SuperMini**, a **capacitive soil moisture sensor**, a **BH1750 light sensor**, a **DHT11** temperature/humidity sensor and a **1.3" OLED SH1106** display. It shows how wet the soil is as a percentage and how much light the plant gets, tells you when the plant needs water, and hosts its own WiFi dashboard. No prior electronics or coding experience needed.
 
 Designed, coded and documented by ElTech-Online in Callander, Scotland — the kit design, firmware, WiFi dashboard and this guide are our own work.
 
@@ -12,11 +12,11 @@ Designed, coded and documented by ElTech-Online in Callander, Scotland — the k
 
 ## What you'll learn
 
-The three parts each talk to the ESP32 in a different way, so one small project covers the three most common kinds of sensor connection:
+The parts talk to the ESP32 in three different ways, so one small project covers the three most common kinds of sensor connection:
 
 - **Analog** — the soil sensor gives a voltage that the ESP32 measures with its analog-to-digital converter (ADC)
 - **One-wire digital** — the DHT11 sends its readings as a train of timed pulses on a single wire
-- **I2C** — the OLED display shares a two-wire bus (SDA/SCL) and answers to its own address
+- **I2C** — the OLED display and the light sensor share one two-wire bus (SDA/SCL), and each answers to its own address
 
 Along the way you'll also pick up:
 
@@ -48,8 +48,8 @@ Two things to know:
 
 ## What it does
 
-- Reads soil moisture (analog), air temperature and humidity (DHT11)
-- Shows a boot splash, then a live readout: soil moisture as the big headline number, a `DRY` / `OK` / `WET` status, and air temperature and humidity underneath
+- Reads soil moisture (analog), light level in lux (BH1750), air temperature and humidity (DHT11)
+- Shows a boot splash, then a live readout: soil moisture as the big headline number, a `DRY` / `OK` / `WET` status, air temperature and humidity underneath, and the light level taking turns with the web address on the bottom line
 - Starts its own WiFi network and serves a dashboard page with the same readings, the calibration buttons and the self-test results
 - Mirrors every reading to Serial (115200 baud)
 - Runs a self-test on boot:
@@ -59,6 +59,7 @@ Two things to know:
   OLED (SH1106): OK
   DHT11:         OK (21.4 C, 48 %)
   Soil sensor:   OK (2280 mV)
+  Light sensor:  OK (320 lx)
   WiFi AP:       OK
   RESULT:        PASS
   ```
@@ -70,7 +71,7 @@ There are **two sketches** in this repo:
 | Sketch | What it is |
 |---|---|
 | `soil_sensor_test/` | The smallest possible start: reads the soil sensor once a second and prints the voltage. About 20 lines of code. Begin here. |
-| `plant_monitor/` | The full project: soil sensor + DHT11 + OLED + WiFi dashboard + calibration. |
+| `plant_monitor/` | The full project: soil sensor + light sensor + DHT11 + OLED + WiFi dashboard + calibration. |
 
 ## Hardware
 
@@ -80,22 +81,24 @@ There are **two sketches** in this repo:
 | Capacitive soil moisture sensor (v2.0 type, 3 pins: GND / VCC / AOUT) | Analog output. The signal pin is printed `AUOT` on some boards. |
 | DHT11 module (3 pins: GND / DATA / VCC) | A module with the pull-up resistor already on the board |
 | 1.3" OLED, SH1106 driver, 128×64, I2C | Address `0x3C` (try `0x3D` if blank) |
-| Breadboard + jumper wires | 10 wires: 4 for the OLED, 3 for the DHT11, 3 for the soil sensor |
+| BH1750 light sensor (dome type on a lead, or a GY-302 board) | I2C, address `0x23` (`0x5C` if its ADDR wire is on 3.3V; the code tries both). Leave ADDR unconnected. |
+| Breadboard + jumper wires | 16 wires: 4 each for the OLED and the light sensor, 3 each for the DHT11 and the soil sensor, and 2 to feed the power rails |
 
 ## Wiring
 
-| Signal | ESP32-C3 | OLED | DHT11 module | Soil sensor |
-|---|---|---|---|---|
-| 3.3V | 3V3 | VDD | VCC | VCC |
-| GND | GND | GND | GND | GND |
-| I2C data | GPIO 8 | SDA | | |
-| I2C clock | GPIO 9 | SCK | | |
-| DHT11 data | GPIO 10 | | DATA | |
-| Soil signal | GPIO 3 | | | AOUT |
+| Signal | ESP32-C3 | OLED | DHT11 module | Soil sensor | Light sensor |
+|---|---|---|---|---|---|
+| 3.3V | 3V3 | VDD | VCC | VCC | VCC |
+| GND | GND | GND | GND | GND | GND |
+| I2C data | GPIO 8 | SDA | | | SDA |
+| I2C clock | GPIO 9 | SCK | | | SCL |
+| DHT11 data | GPIO 10 | | DATA | | |
+| Soil signal | GPIO 3 | | | AOUT | |
 
 ![Wiring diagram: ESP32-C3 SuperMini to the DHT11 sensor, OLED SH1106 display and capacitive soil moisture sensor](wiring_diagram.png)
 
-All three parts share the same 3V3 and GND: use the breadboard's power rails. **Always follow the labels printed on your own modules** — the pin order differs between manufacturers.
+
+All four parts share the same 3V3 and GND: use the breadboard's power rails. **Always follow the labels printed on your own modules** — the pin order differs between manufacturers.
 
 Why those pins:
 
@@ -166,7 +169,7 @@ If the upload stops with an error like `Failed to connect`, put the board into d
 1. Upload `plant_monitor`. Every board creates its **own** network name (e.g. `ElTech-PM-A3F2`) and its **own** random 8-character password, saved in the board's flash memory.
 2. The OLED and Serial Monitor show the network name, password and the address `http://192.168.4.1`.
 3. On your phone or laptop, connect to that WiFi network, then open that address in a browser.
-4. The page shows soil moisture, air temperature and humidity, and updates itself every 2 seconds.
+4. The page shows soil moisture, light, air temperature and humidity, and updates itself every 2 seconds.
 
 This is a standalone Access Point, not connected to your home WiFi or the internet. Range is roughly a typical room.
 
@@ -184,6 +187,18 @@ No phone to hand? In Serial Monitor, type `d` (set dry), `w` (set wet) or `r` (r
 
 If the dry and wet points end up too close together (less than 300 mV apart), the firmware treats the calibration as a mistake and shows the raw voltage instead of a percentage until you set them again.
 
+## Light correction (the dome)
+
+The light sensor sits under a white plastic dome. The dome spreads the light so the reading doesn't jump when a shadow passes, but it also blocks some of it: in our tests the bare sensor read about **180 lux** where the dome read about **120 lux**. So the firmware multiplies every reading by a **light correction** factor, **1.5** by default (180 ÷ 120).
+
+You can change it on the dashboard, in the **Light correction** panel:
+
+1. Note the light reading with the dome on.
+2. Carefully take the dome off (or use a bare sensor in the same spot) and note the reading again.
+3. Enter bare ÷ dome in the box and press **Save**. **Reset to 1.5** goes back to the default.
+
+The value must be between 0.5 and 5. Like the soil calibration it's saved in flash memory, so it survives power-off and re-uploads. A light sensor like this is only accurate to about ±20 % anyway, so the aim is a sensible number, not a perfect one: what matters for a plant is whether it gets more or less light than yesterday.
+
 ## How the code works
 
 Open `plant_monitor/plant_monitor.ino` alongside this section. The file starts with a short guide to its own layout. Every Arduino sketch has two main functions: `setup()` runs once when the board starts, and `loop()` then runs over and over, forever.
@@ -196,7 +211,8 @@ Open `plant_monitor/plant_monitor.ino` alongside this section. The file starts w
 6. **The web server.** `/` sends the page (stored in `page_template.h`), `/data` sends the current readings as JSON, and `/calibrate` saves a calibration point. JavaScript in the page fetches `/data` every 2 seconds.
 7. **No `delay()` in `loop()`.** The web server has to keep answering browsers, so `loop()` checks the clock with `millis()` and only reads the sensors when 2 seconds have passed.
 8. **Drawing on the OLED.** `drawDataScreen()` builds the picture in memory, and `display.display()` sends it to the screen in one go.
-9. **The self-test.** `runSelfTest()` takes one reading from each part and checks that it's believable.
+9. **Reading the light sensor.** `startLightSensor()` and `readLux()` talk to the BH1750 directly over I2C with no library: two one-byte commands switch it on, then each reading is two bytes that make one number. Dividing by 1.2 gives lux, and `lightFactor` corrects for the dome (see *Light correction*).
+10. **The self-test.** `runSelfTest()` takes one reading from each part and checks that it's believable.
 
 ## Try this next
 

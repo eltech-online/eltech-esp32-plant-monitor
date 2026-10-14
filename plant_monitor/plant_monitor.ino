@@ -1,10 +1,11 @@
-// ElTech-Online ESP32 Plant Monitor — soil moisture + air temperature/humidity,
+// ElTech-Online ESP32 Plant Monitor — soil moisture + light + air temperature/humidity,
 // with an OLED readout and a WiFi Access Point + web dashboard
 //
-// Three sensors, three different ways of talking to a microcontroller:
+// Four parts, three different ways of talking to a microcontroller:
 //   - Capacitive soil moisture sensor -> an ANALOG voltage, read with the ADC
 //   - DHT11 temperature/humidity      -> a ONE-WIRE DIGITAL signal (timed pulses)
 //   - SH1106 OLED display             -> the I2C bus (two shared wires)
+//   - BH1750 light sensor             -> the SAME I2C bus (each part has its own address)
 //
 // The board starts its own WiFi network (an Access Point, no router needed) and
 // serves a live-updating webpage with the readings to anything that connects to
@@ -36,7 +37,8 @@
 // Lines starting with // are comments: notes for people, ignored by the board.
 // The file is in this order, and you can read it top to bottom:
 //   1. Settings      - pin numbers and limits you can safely change
-//   2. Soil sensor   - reading the voltage and turning it into a percentage
+//   2. Soil sensor   - reading the voltage and turning it into a percentage,
+//                      then the light sensor
 //   3. Web server    - what the board sends to your phone's browser
 //   4. WiFi          - starting the board's own WiFi network
 //   5. setup()       - runs ONCE when the board is powered on
@@ -91,6 +93,21 @@ const bool  AP_OPEN_NETWORK = false;  // true = no password at all (anyone nearb
 #define DHT_PIN  10
 #define DHT_TYPE DHT11
 
+// The BH1750 light sensor shares the two I2C wires with the OLED. Every I2C
+// part has an address, like a house number on a street, so the board can talk
+// to one at a time. The BH1750 answers at 0x23, or at 0x5C if its ADDR wire is
+// connected to 3.3V; the self-test tries both.
+#define LIGHT_ADDR      0x23
+#define LIGHT_ADDR_ALT  0x5C
+
+// The white dome over the light sensor spreads the light out, but it also blocks
+// some of it: in tests the bare sensor read about 180 lux where the dome read
+// about 120. Multiplying by this factor (180 / 120 = 1.5) gives back the bare
+// sensor's reading. It can be changed on the web page and is saved in flash.
+#define DEFAULT_LIGHT_FACTOR 1.5
+#define MIN_LIGHT_FACTOR     0.5
+#define MAX_LIGHT_FACTOR     5.0
+
 // ---- Soil sensor calibration ----
 // The sensor gives a HIGHER voltage when dry and a LOWER one when wet. The exact
 // numbers differ a little from sensor to sensor, so the two end points are
@@ -126,17 +143,18 @@ WebServer server(80);                                              // the web se
 // function below can read and change them. "bool" is a true/false value.
 // These two remember whether each part answered, so the rest of the code can
 // skip a missing part instead of crashing.
-bool oledOK = false, dhtOK = false;
+bool oledOK = false, dhtOK = false, lightOK = false;
+uint8_t lightAddr = LIGHT_ADDR;   // whichever of the two addresses answered
 
 // Set by runSelfTest(): true only if the sensor answered AND its first reading
 // was inside the ranges above.
-bool dhtPassed = false, soilPassed = false;
+bool dhtPassed = false, soilPassed = false, lightPassed = false;
 bool selfTestPassed = false;
 
 // Each part's self-test result as text ("OK", "NOT FOUND", "BAD READING"),
 // plus the first reading it took — kept so the web dashboard can show them too.
-String dhtStatus = "NOT FOUND", soilStatus = "BAD READING";
-String dhtDetail, soilDetail;
+String dhtStatus = "NOT FOUND", soilStatus = "BAD READING", lightStatus = "NOT FOUND";
+String dhtDetail, soilDetail, lightDetail;
 
 // The network name/password actually in use (from the settings above, or
 // generated), and whether the Access Point started.
@@ -152,6 +170,8 @@ bool calSaved = false;
 // whole number. NAN means "not a number" — a float that has no value yet.
 float g_temperature = NAN, g_humidity = NAN;
 int g_soilMv = 0;        // soil sensor voltage, in millivolts
+float lightFactor = DEFAULT_LIGHT_FACTOR;   // dome correction, see DEFAULT_LIGHT_FACTOR
+float g_lux = NAN;       // light level, in lux (about 100 = dim room, 10000+ = daylight)
 int dhtFailCount = 0;    // how many DHT11 readings in a row have failed
 
 // These lines just announce functions that are written further down the file,
@@ -209,6 +229,31 @@ String soilStatusText(int pct) {
   return "OK";
 }
 
+// ---------------------------------------------------------------------------
+// Light sensor (BH1750)
+// ---------------------------------------------------------------------------
+// No library needed: the sensor only understands a handful of one-byte
+// commands. 0x01 switches it on and 0x10 tells it to keep measuring.
+// Returns true if a sensor answered at that address.
+bool startLightSensor(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  Wire.write(0x01);                        // power on
+  if (Wire.endTransmission() != 0) return false;   // nothing answered here
+  Wire.beginTransmission(addr);
+  Wire.write(0x10);                        // continuous high-resolution mode
+  return Wire.endTransmission() == 0;
+}
+
+// Asks the sensor for its latest measurement. It sends two bytes that together
+// make one number from 0 to 65535; dividing by 1.2 turns that into lux, and
+// lightFactor corrects for the light the dome blocks.
+// Returns NAN ("not a number") if the sensor didn't answer.
+float readLux() {
+  if (Wire.requestFrom(lightAddr, (uint8_t)2) != 2) return NAN;
+  int raw = (Wire.read() << 8) | Wire.read();   // first byte is the "big" half
+  return raw / 1.2 * lightFactor;
+}
+
 // Reads the saved dry/wet points back from flash memory at power-on.
 //
 // Preferences is the ESP32's small "notebook" that survives the power being
@@ -219,6 +264,7 @@ void loadCalibration() {
   prefs.begin("plant", true);   // open the notebook called "plant" (true = read only)
   int savedDry = prefs.getInt("dry_mv", -1);
   int savedWet = prefs.getInt("wet_mv", -1);
+  lightFactor = prefs.getFloat("light_k", DEFAULT_LIGHT_FACTOR);
   prefs.end();
   calSaved = savedDry > 0 || savedWet > 0;
   if (savedDry > 0) dryMv = savedDry;
@@ -285,7 +331,7 @@ String selfTestRow(const String& name, const String& status, const String& detai
 // "/data" -> just the current readings, as JSON. JSON is a simple text format
 // that programs can read easily. The page's JavaScript asks for it every 2
 // seconds. What this function sends looks like:
-//   {"soil":"62 %","status":"OK","soil_mv":1494,"temp":"21.4 °C","hum":"48 %", ...}
+//   {"soil":"62 %","status":"OK","soil_mv":1494,"temp":"21.4 °C","hum":"48 %","light":"320 lx", ...}
 // In the code below, \" puts a real quote mark inside the text, and += adds
 // more text onto the end of what's already there.
 void handleData() {
@@ -300,6 +346,8 @@ void handleData() {
     tempText = String(g_temperature, 1) + " °C";   // 1 = one decimal place
     humText  = String(g_humidity, 0) + " %";       // 0 = whole number
   }
+  String lightText = "n/a";
+  if (lightOK && !isnan(g_lux)) lightText = String(g_lux, 0) + " lx";
 
   // Then build the JSON text piece by piece.
   String json = "{";
@@ -308,20 +356,48 @@ void handleData() {
   json += "\"soil_mv\":" + String(g_soilMv) + ",";
   json += "\"temp\":\"" + tempText + "\",";
   json += "\"hum\":\""  + humText + "\",";
+  json += "\"light\":\"" + lightText + "\",";
 
   json += "\"cal\":{\"dry\":" + String(dryMv) + ",\"wet\":" + String(wetMv);
   json += ",\"saved\":" + String(calSaved ? "true" : "false");
   json += ",\"valid\":" + String(calibrationValid() ? "true" : "false") + "},";
+  json += "\"lightk\":" + String(lightFactor, 2) + ",";
 
   // The power-on self-test results, so you can see them without Serial Monitor.
   json += "\"selftest\":{\"result\":\"" + String(selfTestPassed ? "PASS" : "FAIL") + "\",\"parts\":[";
   json += selfTestRow("OLED (SH1106)", oledOK ? "OK" : "NOT FOUND", "") + ",";
   json += selfTestRow("DHT11", dhtStatus, dhtDetail) + ",";
   json += selfTestRow("Soil sensor", soilStatus, soilDetail) + ",";
+  json += selfTestRow("Light sensor (BH1750)", lightStatus, lightDetail) + ",";
   json += selfTestRow("WiFi AP", wifiOK ? "OK" : "FAILED", wifiOK ? "" : wifiError);
   json += "]}}";
   server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   server.send(200, "application/json", json);
+}
+
+// The page's light correction box sends a POST to /lightfactor?f=1.5. Values
+// outside MIN_LIGHT_FACTOR..MAX_LIGHT_FACTOR are refused; f=reset goes back to
+// the default.
+void handleLightFactor() {
+  String arg = server.arg("f");
+  String msg;
+  float f = arg == "reset" ? DEFAULT_LIGHT_FACTOR : arg.toFloat();   // toFloat() gives 0 for text
+  if (f < MIN_LIGHT_FACTOR || f > MAX_LIGHT_FACTOR) {
+    msg = "Enter a number from " + String(MIN_LIGHT_FACTOR, 1) + " to " + String(MAX_LIGHT_FACTOR, 1) + ".";
+  } else {
+    // the stored reading already includes the old factor: rescale it so the
+    // page shows the new value straight away instead of after the next read
+    if (!isnan(g_lux)) g_lux = g_lux / lightFactor * f;
+    lightFactor = f;
+    Preferences prefs;
+    prefs.begin("plant", false);
+    prefs.putFloat("light_k", f);
+    prefs.end();
+    msg = "Light correction saved: x" + String(f, 2) + ".";
+  }
+  Serial.println(msg);
+  server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  server.send(200, "application/json", "{\"msg\":\"" + msg + "\"}");
 }
 
 // The page's calibration buttons send a POST to /calibrate?point=dry (or wet,
@@ -456,6 +532,7 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/data", handleData);
   server.on("/calibrate", HTTP_POST, handleCalibrate);
+  server.on("/lightfactor", HTTP_POST, handleLightFactor);
   server.begin();
 
   if (oledOK) {
@@ -525,6 +602,13 @@ void loop() {
       if (dhtFailCount >= 5) dhtOK = false;      // 5 misses in a row: show "n/a"
     }
 
+    // The light sensor keeps measuring by itself; we just collect the latest
+    // value. If it stops answering, keep the last value and show "n/a" instead.
+    if (lightOK) {
+      float lux = readLux();
+      if (!isnan(lux)) g_lux = lux;
+    }
+
     int pct = soilPercent(g_soilMv);
     Serial.println("----------------------------------------");
     Serial.print("  Soil moisture : ");
@@ -535,6 +619,8 @@ void loop() {
     if (dhtOK) Serial.printf("%5.1f C\n", g_temperature); else Serial.println("  n/a");
     Serial.print("  Humidity      : ");
     if (dhtOK) Serial.printf("%5.0f %%\n", g_humidity); else Serial.println("  n/a");
+    Serial.print("  Light         : ");
+    if (lightOK && !isnan(g_lux)) Serial.printf("%5.0f lx\n", g_lux); else Serial.println("  n/a");
 
     if (oledOK) drawDataScreen();
   }
@@ -546,7 +632,8 @@ void loop() {
 //   y=9   Pass: abcd2345            <- password
 //   y=20      62%                   <- big headline soil moisture (text size 3)
 //   y=46  Soil: OK       22C 48%    <- status, then air temperature + humidity
-//   y=56  http://192.168.4.1        <- the address to open in your browser
+//   y=56  http://192.168.4.1        <- the address to open in your browser,
+//         Light: 320 lx                taking turns with the light level
 //
 // Positions are in pixels: x counts across from the left edge (0-127), y counts
 // DOWN from the top edge (0-63). Nothing appears on the screen until
@@ -587,7 +674,16 @@ void drawDataScreen() {
   display.setCursor(SCREEN_WIDTH - air.length() * 6, 46);
   display.print(air);
 
-  if (wifiOK) centerText(apUrl, 56, 1);
+  // The bottom line takes turns: the web address on one refresh, the light
+  // level on the next. ("static" makes showLight keep its value between calls,
+  // and ! flips true to false and back.)
+  static bool showLight = false;
+  showLight = !showLight;
+  if (showLight && lightOK && !isnan(g_lux)) {
+    centerText("Light: " + String(g_lux, 0) + " lx", 56, 1);
+  } else if (wifiOK) {
+    centerText(apUrl, 56, 1);
+  }
 
   display.display();
 }
@@ -647,10 +743,32 @@ bool runSelfTest() {
   soilDetail = String(g_soilMv) + " mV";
   Serial.printf("%s (%d mV)\n", soilStatus.c_str(), g_soilMv);
 
+  // An I2C part either answers at its address or it doesn't, so "found" is a
+  // real test here. Any light level from pitch dark to full sun is believable,
+  // so there is no range check. The first measurement takes up to 180 ms.
+  Serial.print("Light sensor:  ");
+  lightOK = startLightSensor(LIGHT_ADDR);
+  if (!lightOK) {
+    lightAddr = LIGHT_ADDR_ALT;
+    lightOK = startLightSensor(LIGHT_ADDR_ALT);
+  }
+  if (lightOK) {
+    delay(180);
+    g_lux = readLux();
+  }
+  lightPassed = lightOK && !isnan(g_lux);
+  if (lightPassed) {
+    lightStatus = "OK";
+    lightDetail = String(g_lux, 0) + " lx";
+    Serial.printf("OK (%.0f lx)\n", g_lux);
+  } else {
+    Serial.println("NOT FOUND");
+  }
+
   Serial.print("WiFi AP:       ");
   if (wifiOK) { Serial.println("OK"); } else { Serial.print("FAILED ("); Serial.print(wifiError); Serial.println(")"); }
 
-  bool passed = oledOK && dhtPassed && soilPassed && wifiOK;
+  bool passed = oledOK && dhtPassed && soilPassed && lightPassed && wifiOK;
   Serial.print("RESULT:        "); Serial.println(passed ? "PASS" : "FAIL");
   return passed;
 }
@@ -669,6 +787,10 @@ void showSelfTestFailure() {
   if (!soilPassed) {
     display.setCursor(0, y); y += 10;
     display.print("Soil: bad reading");
+  }
+  if (!lightPassed) {
+    display.setCursor(0, y); y += 10;
+    display.print("Light: not found");
   }
   if (!wifiOK) {
     display.setCursor(0, y); y += 10;
