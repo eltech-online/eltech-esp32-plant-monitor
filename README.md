@@ -1,8 +1,6 @@
 # ElTech-Online ESP32-C3 Plant Monitor
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/eltech)
-
-> **Status: BETA, not fully tested.** An earlier version without the light sensor passed a first run on real hardware (all parts found, self-test PASS). The BH1750 light sensor code added since then has passed its self-test on real hardware, but its readings have only been spot-checked. Also, the default calibration values and self-test ranges have not been tuned yet and the kit has not been through full testing. Pin choices and defaults may still change.
+[![Compile sketches](https://github.com/eltech-online/eltech-esp32-plant-monitor/actions/workflows/compile.yml/badge.svg)](https://github.com/eltech-online/eltech-esp32-plant-monitor/actions/workflows/compile.yml) [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/eltech)
 
 A beginner-friendly **learning kit**: build a plant monitor from an **ESP32-C3 SuperMini**, a **capacitive soil moisture sensor**, a **BH1750 light sensor**, a **DHT11** temperature/humidity sensor and a **1.3" OLED SH1106** display. It shows how wet the soil is as a percentage and how much light the plant gets, tells you when the plant needs water, and hosts its own WiFi dashboard. No prior electronics or coding experience needed.
 
@@ -66,11 +64,14 @@ Two things to know:
 
   Each line reads `OK`, `NOT FOUND` (check the wiring) or `BAD READING` (the part answers but its data is wrong). If anything fails, the OLED also shows a **SELF-TEST FAILED** screen listing what failed.
 
-There are **two sketches** in this repo:
+There are **five sketches** in this repo: one small test per part, then the full project. Each test needs only that part wired up, so you can build and check one part at a time.
 
 | Sketch | What it is |
 |---|---|
-| `soil_sensor_test/` | The smallest possible start: reads the soil sensor once a second and prints the voltage. About 20 lines of code. Begin here. |
+| `soil_sensor_test/` | Reads the soil sensor once a second and prints the voltage. About 20 lines of code. Begin here. |
+| `dht11_test/` | Prints the temperature and humidity every 2 seconds. Breathe on the sensor and watch the humidity rise. |
+| `light_sensor_test/` | Finds the light sensor, then prints the light level once a second, with and without the dome correction. No library needed. |
+| `oled_test/` | Lists every part answering on the I2C wires, then draws a frame, some text and a counter on the screen. |
 | `plant_monitor/` | The full project: soil sensor + light sensor + DHT11 + OLED + WiFi dashboard + calibration. |
 
 ## Hardware
@@ -133,7 +134,7 @@ Why those pins:
 
    If Library Manager asks to install dependencies (Adafruit BusIO, Adafruit Unified Sensor), click **Install all**.
 
-   **Compiled with** these versions (full hardware testing pending):
+   **Tested with** these versions — if something doesn't compile or work correctly, installing these exact versions is the first thing to try (both Boards Manager and Library Manager let you pick a version from a dropdown):
 
    | Package | Version |
    |---|---|
@@ -144,7 +145,7 @@ Why those pins:
    | Adafruit BusIO | 1.17.4 |
    | Adafruit Unified Sensor | 1.1.15 |
 
-6. Open `soil_sensor_test/soil_sensor_test.ino` first, upload it, and check the readings in Serial Monitor. Then open `plant_monitor/plant_monitor.ino` and upload that.
+6. Test each part on its own first: upload `soil_sensor_test`, `dht11_test`, `light_sensor_test` and `oled_test` one at a time and check each one's output in Serial Monitor (and on the screen for the OLED). Then open `plant_monitor/plant_monitor.ino` and upload that.
 
 ### Opening the Serial Monitor
 
