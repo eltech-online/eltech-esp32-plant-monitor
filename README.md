@@ -50,7 +50,7 @@ Two things to know:
 
 - Reads soil moisture (analog), light level in lux (BH1750), air temperature and humidity (DHT11)
 - Shows a boot splash, then a live readout: soil moisture as the big headline number, a `DRY` / `OK` / `WET` status, air temperature and humidity underneath, and the light level taking turns with the web address on the bottom line
-- Starts its own WiFi network and serves a dashboard page with the same readings, the calibration buttons and the self-test results
+- Starts its own WiFi network and serves a dashboard page with the same readings, the soil calibration buttons, the light correction setting and the self-test results
 - Mirrors every reading to Serial (115200 baud)
 - Runs a self-test on boot:
 
@@ -81,7 +81,7 @@ There are **two sketches** in this repo:
 | Capacitive soil moisture sensor (v2.0 type, 3 pins: GND / VCC / AOUT) | Analog output. The signal pin is printed `AUOT` on some boards. |
 | DHT11 module (3 pins: GND / DATA / VCC) | A module with the pull-up resistor already on the board |
 | 1.3" OLED, SH1106 driver, 128×64, I2C | Address `0x3C` (try `0x3D` if blank) |
-| BH1750 light sensor (dome type on a lead, or a GY-302 board) | I2C, address `0x23` (`0x5C` if its ADDR wire is on 3.3V; the code tries both). Leave ADDR unconnected. |
+| BH1750 light sensor (dome type on a lead, or a GY-302 board) | I2C, address `0x23` (`0x5C` if its ADDR wire is on 3.3V; the code tries both). Leave ADDR unconnected. Our dome's lead: red = VCC, brown = SCL, white = SDA (printed `DAT`), black = GND, yellow = ADDR. Other makers may use other colours: check the print on the plug. |
 | Breadboard + jumper wires | 16 wires: 4 each for the OLED and the light sensor, 3 each for the DHT11 and the soil sensor, and 2 to feed the power rails |
 
 ## Wiring
@@ -95,8 +95,7 @@ There are **two sketches** in this repo:
 | DHT11 data | GPIO 10 | | DATA | | |
 | Soil signal | GPIO 3 | | | AOUT | |
 
-![Wiring diagram: ESP32-C3 SuperMini to the DHT11 sensor, OLED SH1106 display and capacitive soil moisture sensor](wiring_diagram.png)
-
+![Wiring diagram: ESP32-C3 SuperMini to the DHT11 sensor, OLED SH1106 display, capacitive soil moisture sensor and BH1750 light sensor dome](wiring_diagram.png)
 
 All four parts share the same 3V3 and GND: use the breadboard's power rails. **Always follow the labels printed on your own modules** — the pin order differs between manufacturers.
 
@@ -189,13 +188,13 @@ If the dry and wet points end up too close together (less than 300 mV apart), th
 
 ## Light correction (the dome)
 
-The light sensor sits under a white plastic dome. The dome spreads the light so the reading doesn't jump when a shadow passes, but it also blocks some of it: in our tests the bare sensor read about **180 lux** where the dome read about **120 lux**. So the firmware multiplies every reading by a **light correction** factor, **1.5** by default (180 ÷ 120).
+The light sensor sits under a white plastic dome. The dome collects light from all directions, so the reading doesn't depend on exactly where the sun or lamp is, but it also blocks some of the light: in our tests the bare sensor read about **180 lux** where the dome read about **120 lux**. So the firmware multiplies every reading by a **light correction** factor, **1.5** by default (180 ÷ 120).
 
 You can change it on the dashboard, in the **Light correction** panel:
 
 1. Note the light reading with the dome on.
-2. Carefully take the dome off (or use a bare sensor in the same spot) and note the reading again.
-3. Enter bare ÷ dome in the box and press **Save**. **Reset to 1.5** goes back to the default.
+2. In the same spot, measure the light with something you trust: a phone light-meter app, or a bare BH1750 board (GY-302). Don't try to take the dome off: on most of these sensors it is sealed on.
+3. Divide the trusted reading by the dome reading, enter the result in the box and press **Save**. **Reset to 1.5** goes back to the default.
 
 The value must be between 0.5 and 5. Like the soil calibration it's saved in flash memory, so it survives power-off and re-uploads. A light sensor like this is only accurate to about ±20 % anyway, so the aim is a sensible number, not a perfect one: what matters for a plant is whether it gets more or less light than yesterday.
 
@@ -208,7 +207,7 @@ Open `plant_monitor/plant_monitor.ino` alongside this section. The file starts w
 3. **Turning voltage into a percentage.** `soilPercent()` scales the reading between the dry point (0 %) and the wet point (100 %). The comment above it has a worked example.
 4. **Saving the calibration.** `calibrate()` stores the current reading with the ESP32's `Preferences` library, which keeps values in flash memory when the power is off. `loadCalibration()` reads them back at start-up.
 5. **Reading the DHT11.** `dht.readTemperature()` and `dht.readHumidity()` do the pulse timing for you. The sensor occasionally misses a reading, so the code keeps the last good values and only reports a problem after five misses in a row.
-6. **The web server.** `/` sends the page (stored in `page_template.h`), `/data` sends the current readings as JSON, and `/calibrate` saves a calibration point. JavaScript in the page fetches `/data` every 2 seconds.
+6. **The web server.** `/` sends the page (stored in `page_template.h`), `/data` sends the current readings as JSON, `/calibrate` saves a soil calibration point and `/lightfactor` saves the light correction. JavaScript in the page fetches `/data` every 2 seconds.
 7. **No `delay()` in `loop()`.** The web server has to keep answering browsers, so `loop()` checks the clock with `millis()` and only reads the sensors when 2 seconds have passed.
 8. **Drawing on the OLED.** `drawDataScreen()` builds the picture in memory, and `display.display()` sends it to the screen in one go.
 9. **Reading the light sensor.** `startLightSensor()` and `readLux()` talk to the BH1750 directly over I2C with no library: two one-byte commands switch it on, then each reading is two bytes that make one number. Dividing by 1.2 gives lux, and `lightFactor` corrects for the dome (see *Light correction*).

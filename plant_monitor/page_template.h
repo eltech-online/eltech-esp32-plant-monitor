@@ -4,7 +4,8 @@
 // are inserted into it. Instead, its own JavaScript (bottom of this file) polls
 // the /data endpoint every 2 seconds and updates the readings, the calibration
 // values and the power-on self-test results in the browser, so the page never
-// needs a full reload. The calibration buttons send a POST to /calibrate.
+// needs a full reload. The calibration buttons send a POST to /calibrate, and
+// the light correction box sends one to /lightfactor.
 //
 // R"HTML(...)HTML" is a C++ raw string literal: everything between the markers
 // is taken literally, including quotes and newlines, so the HTML/CSS/JS below
@@ -47,7 +48,7 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
     button { font:inherit; font-size:13px; font-weight:600; color:#0f172a; background:#7dd3fc;
              border:0; border-radius:8px; padding:9px 14px; }
     button.quiet { background:#334155; color:#e2e8f0; }
-    #calmsg { color:#94a3b8; font-size:12px; margin-top:10px; min-height:15px; }
+    #calmsg, #lkmsg { color:#94a3b8; font-size:12px; margin-top:10px; min-height:15px; }
     .panel a { color:#7dd3fc; }
     .footer { margin-top:24px; color:#64748b; font-size:11px; }
     .footer a { color:#94a3b8; }
@@ -84,9 +85,10 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
     <div class="head"><h2>Light correction</h2><span id="lk">--</span></div>
     <ol class="hint">
       <li>The white dome blocks some light, so the reading is multiplied by this
-          number. 1.5 matches the bare sensor (it read 180 lux where the dome read 120).</li>
-      <li>To set your own: note the reading, take the dome off, note it again, and
-          enter bare &divide; dome.</li>
+          number. 1.5 matches a bare sensor (it read 180 lux where the dome read 120).</li>
+      <li>To set your own: measure the same spot with a phone light-meter app or a
+          bare sensor, and enter that reading &divide; this one. Don't remove the dome:
+          it is usually sealed on.</li>
     </ol>
     <div class="buttons">
       <input id="lkin" type="number" step="0.05" min="0.5" max="5" value="1.5"
@@ -108,7 +110,7 @@ const char PAGE_TEMPLATE[] PROGMEM = R"HTML(
       <li>Power it on, connect to the WiFi network it creates, and you'll see this exact page</li>
     </ol>
   </div>
-  <div class="footer">ESP32 + soil moisture sensor + DHT11 &middot; <a href="https://github.com/eltech-online/eltech-esp32-plant-monitor" target="_blank">github.com/eltech-online/eltech-esp32-plant-monitor</a></div>
+  <div class="footer">ESP32 + soil moisture sensor + BH1750 light sensor + DHT11 + OLED &middot; <a href="https://github.com/eltech-online/eltech-esp32-plant-monitor" target="_blank">github.com/eltech-online/eltech-esp32-plant-monitor</a></div>
   <script>
     const el = (id) => document.getElementById(id);
     async function refresh() {

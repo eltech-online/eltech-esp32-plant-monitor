@@ -10,7 +10,7 @@
 // The board starts its own WiFi network (an Access Point, no router needed) and
 // serves a live-updating webpage with the readings to anything that connects to
 // it — a phone, laptop, whatever. The same page has the buttons that calibrate
-// the soil sensor.
+// the soil sensor and the box that sets the light correction.
 //
 // Libraries needed (Arduino IDE Library Manager):
 //   DHT sensor library (by Adafruit)
@@ -52,7 +52,7 @@
 // to write (for example) the OLED's low-level commands ourselves.
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Preferences.h>  // saves the WiFi password and the calibration in flash
+#include <Preferences.h>  // saves the WiFi password, soil calibration and light correction in flash
 #include <Wire.h>
 #include <DHT.h>
 #include <Adafruit_GFX.h>
@@ -130,6 +130,7 @@ const int WET_ABOVE_PCT = 70;   // above this: "WET" — hold off watering
 // badly wired sensor, so the self-test fails it.
 const float TEMP_MIN_C  = 0.0, TEMP_MAX_C  = 50.0;   // the DHT11's own working range
 const float HUM_MIN_PCT = 5.0, HUM_MAX_PCT = 95.0;
+// A working sensor reads roughly 1000 mV in water and 2300-2700 mV in air.
 const int   SOIL_MIN_MV = 300, SOIL_MAX_MV = 3000;
 
 // These three lines create the "objects" the libraries give us. Each one stands
@@ -254,18 +255,29 @@ float readLux() {
   return raw / 1.2 * lightFactor;
 }
 
-// Reads the saved dry/wet points back from flash memory at power-on.
+// True if f is a usable light correction. Written as "inside the range" rather
+// than "outside the range" on purpose: NAN ("not a number") fails every
+// comparison, so it is refused here instead of slipping through.
+bool lightFactorValid(float f) {
+  return f >= MIN_LIGHT_FACTOR && f <= MAX_LIGHT_FACTOR;
+}
+
+// Reads the saved dry/wet points and the light correction back from flash
+// memory at power-on.
 //
 // Preferences is the ESP32's small "notebook" that survives the power being
-// turned off. Values are stored under a name (a "key"), here "dry_mv" and
-// "wet_mv". The -1 is what getInt() hands back if nothing was ever saved.
+// turned off. Values are stored under a name (a "key"), here "dry_mv",
+// "wet_mv" and "light_k". The -1 is what getInt() hands back if nothing was
+// ever saved; getFloat() hands back DEFAULT_LIGHT_FACTOR instead.
 void loadCalibration() {
   Preferences prefs;
   prefs.begin("plant", true);   // open the notebook called "plant" (true = read only)
   int savedDry = prefs.getInt("dry_mv", -1);
   int savedWet = prefs.getInt("wet_mv", -1);
-  lightFactor = prefs.getFloat("light_k", DEFAULT_LIGHT_FACTOR);
+  float savedFactor = prefs.getFloat("light_k", DEFAULT_LIGHT_FACTOR);
   prefs.end();
+  // Only use the saved light correction if it's a sensible number.
+  if (lightFactorValid(savedFactor)) lightFactor = savedFactor;
   calSaved = savedDry > 0 || savedWet > 0;
   if (savedDry > 0) dryMv = savedDry;
   if (savedWet > 0) wetMv = savedWet;
@@ -382,7 +394,7 @@ void handleLightFactor() {
   String arg = server.arg("f");
   String msg;
   float f = arg == "reset" ? DEFAULT_LIGHT_FACTOR : arg.toFloat();   // toFloat() gives 0 for text
-  if (f < MIN_LIGHT_FACTOR || f > MAX_LIGHT_FACTOR) {
+  if (!lightFactorValid(f)) {
     msg = "Enter a number from " + String(MIN_LIGHT_FACTOR, 1) + " to " + String(MAX_LIGHT_FACTOR, 1) + ".";
   } else {
     // the stored reading already includes the old factor: rescale it so the
@@ -427,7 +439,7 @@ String makeUniqueSsid() {
 // boot. Uses lowercase letters and digits only, minus look-alikes (i, l, o, 0, 1),
 // so it's easy to read off the OLED and type on a phone. To get a new one, set
 // Tools > "Erase All Flash Before Sketch Upload" to Enabled and upload once
-// (that also clears the soil sensor calibration).
+// (that also clears the soil sensor calibration and the light correction).
 String loadOrCreatePassword() {
   Preferences prefs;
   prefs.begin("plant", false);
@@ -487,7 +499,8 @@ void setup() {
 
   oledOK = display.begin(OLED_ADDR, true);
   dht.begin();
-  // Measure up to about 2.5 V on the soil pin (the ESP32-C3's widest range).
+  // Use the soil pin's widest voltage range. It is most accurate up to about
+  // 2.5 V and still measures, a little less accurately, above that.
   analogSetPinAttenuation(SOIL_PIN, ADC_11db);
   loadCalibration();
 
@@ -761,6 +774,9 @@ bool runSelfTest() {
     lightStatus = "OK";
     lightDetail = String(g_lux, 0) + " lx";
     Serial.printf("OK (%.0f lx)\n", g_lux);
+  } else if (lightOK) {
+    lightStatus = "BAD READING";   // it answered, but sent no measurement
+    Serial.println("BAD READING");
   } else {
     Serial.println("NOT FOUND");
   }
@@ -790,7 +806,7 @@ void showSelfTestFailure() {
   }
   if (!lightPassed) {
     display.setCursor(0, y); y += 10;
-    display.print("Light: not found");
+    display.print(lightOK ? "Light: bad reading" : "Light: not found");
   }
   if (!wifiOK) {
     display.setCursor(0, y); y += 10;

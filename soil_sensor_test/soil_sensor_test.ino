@@ -31,9 +31,10 @@ void setup() {
   // Monitor must be set to the same speed or the text comes out garbled.
   Serial.begin(115200);
 
-  // Tell the ESP32 to measure voltages up to about 2.5 V on this pin (its
-  // widest range). Without this it would still work, but naming it makes clear
-  // what range we're using.
+  // Tell the ESP32 to use this pin's widest voltage range. It is most accurate
+  // up to about 2.5 V and still measures, a little less accurately, above that
+  // (a dry sensor in air can read 2.7 V). Without this it would still work, but
+  // naming it makes clear what range we're using.
   analogSetPinAttenuation(SOIL_PIN, ADC_11db);
 
   Serial.println("Soil sensor test - readings in millivolts (mV)");
